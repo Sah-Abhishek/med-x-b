@@ -266,6 +266,28 @@ export const ChartRepository = {
   },
 
   /**
+   * Get chart with documents by session ID
+   */
+  async getWithDocumentsBySessionId(sessionId) {
+    const chartResult = await query(
+      `SELECT * FROM charts WHERE session_id = $1`,
+      [sessionId]
+    );
+
+    if (chartResult.rows.length === 0) return null;
+
+    const chart = chartResult.rows[0];
+
+    const docsResult = await query(
+      `SELECT * FROM documents WHERE chart_id = $1 ORDER BY created_at`,
+      [chart.id]
+    );
+
+    chart.documents = docsResult.rows;
+    return chart;
+  },
+
+  /**
    * Get chart with documents
    */
   async getWithDocuments(chartNumber) {

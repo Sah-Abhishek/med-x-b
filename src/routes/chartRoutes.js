@@ -140,6 +140,9 @@ router.get('/debug/:chartNumber', async (req, res) => {
 // CHART CRUD OPERATIONS
 // ═══════════════════════════════════════════════════════════════
 
+// Get chart by session ID (must be before /:chartNumber)
+router.get('/session/:sessionId', chartController.getChartBySessionId.bind(chartController));
+
 // Get all charts (work queue)
 router.get('/', chartController.getCharts.bind(chartController));
 

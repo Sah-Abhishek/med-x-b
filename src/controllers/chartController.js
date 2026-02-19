@@ -179,6 +179,103 @@ class ChartController {
   }
 
   /**
+   * Get chart by session ID with full details
+   * GET /api/charts/session/:sessionId
+   */
+  async getChartBySessionId(req, res) {
+    try {
+      const { sessionId } = req.params;
+
+      const chart = await ChartRepository.getWithDocumentsBySessionId(sessionId);
+
+      if (!chart) {
+        return res.status(404).json({
+          success: false,
+          error: 'No data found for this session'
+        });
+      }
+
+      const slaInfo = calculateProcessingDuration(chart.created_at, chart.processing_completed_at);
+
+      res.json({
+        success: true,
+        chart: {
+          id: chart.id,
+          sessionId: chart.session_id,
+          mrn: chart.mrn,
+          chartNumber: chart.chart_number,
+          facility: chart.facility,
+          specialty: chart.specialty,
+          dateOfService: chart.date_of_service,
+          provider: chart.provider,
+          documentCount: chart.document_count,
+          aiStatus: chart.ai_status,
+          reviewStatus: chart.review_status,
+
+          // AI Results
+          aiSummary: chart.ai_summary,
+          diagnosisCodes: chart.diagnosis_codes,
+          procedures: chart.procedures,
+          medications: chart.medications,
+          vitalsSummary: chart.vitals_summary,
+          labResultsSummary: chart.lab_results_summary,
+          codingNotes: chart.coding_notes,
+
+          // Original AI codes (unmodified - for comparison)
+          originalAICodes: chart.original_ai_codes,
+
+          // User modifications tracking
+          userModifications: chart.user_modifications,
+
+          // Final submitted codes
+          finalCodes: chart.final_codes,
+          submittedAt: chart.submitted_at,
+          submittedBy: chart.submitted_by,
+
+          // Error tracking
+          lastError: chart.last_error,
+          lastErrorAt: chart.last_error_at,
+          retryCount: chart.retry_count,
+
+          // SLA
+          slaData: chart.sla_data,
+          sla: slaInfo,
+          processingStartedAt: chart.processing_started_at,
+          processingCompletedAt: chart.processing_completed_at,
+
+          // Documents
+          documents: chart.documents?.map(doc => ({
+            id: doc.id,
+            documentType: doc.document_type,
+            filename: doc.original_name,
+            fileSize: doc.file_size,
+            mimeType: doc.mime_type,
+            s3Url: doc.s3_url,
+            s3Key: doc.s3_key,
+            ocrStatus: doc.ocr_status,
+            ocrText: doc.ocr_text,
+            ocrProcessingTime: doc.ocr_processing_time,
+            aiDocumentSummary: doc.ai_document_summary,
+            transactionId: doc.transaction_id,
+            transactionLabel: doc.transaction_label,
+            createdAt: doc.created_at
+          })),
+
+          createdAt: chart.created_at,
+          updatedAt: chart.updated_at
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Error fetching chart by session ID:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  /**
    * Save user modifications to codes
    * POST /api/charts/:chartNumber/modifications
    */
