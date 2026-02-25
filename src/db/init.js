@@ -137,6 +137,7 @@ async function initDatabase() {
         
         -- Job status
         status VARCHAR(50) DEFAULT 'pending',
+        current_phase VARCHAR(50) DEFAULT 'pending',
         job_data JSONB,
         
         -- Worker tracking

@@ -131,7 +131,7 @@ class WebSocketService {
         type: 'status_update',
         jobId,
         status: job.status,
-        phase: job.status,
+        phase: job.current_phase || job.status,
         message: job.status === 'completed'
           ? 'Job already completed'
           : job.status === 'failed'
