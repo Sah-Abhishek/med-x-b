@@ -339,11 +339,15 @@ export const QueueService = {
    * Used by the worker to broadcast status changes to WebSocket clients via PG LISTEN/NOTIFY
    */
   async notifyStatusChange(jobId, status, phase, message = null) {
-    // Persist current_phase so WebSocket can send it on reconnect
-    await query(
-      `UPDATE processing_queue SET current_phase = $2 WHERE job_id = $1`,
-      [jobId, phase]
-    );
+    // Persist current_phase so WebSocket can send it on reconnect (best-effort, don't block notify)
+    try {
+      await query(
+        `UPDATE processing_queue SET current_phase = $2 WHERE job_id = $1`,
+        [jobId, phase]
+      );
+    } catch (e) {
+      // Column may not exist yet — continue so pg_notify still fires
+    }
 
     const payload = JSON.stringify({
       jobId,
