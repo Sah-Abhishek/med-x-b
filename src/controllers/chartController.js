@@ -1054,6 +1054,37 @@ class ChartController {
       });
     }
   }
+
+  /**
+   * Get AI processing status for multiple charts by session IDs
+   * POST /api/charts/batch-status
+   * Body: { sessionIds: [1, 2, 3, ...] }
+   */
+  async getBatchStatus(req, res) {
+    try {
+      const { sessionIds } = req.body;
+      if (!Array.isArray(sessionIds) || sessionIds.length === 0) {
+        return res.json({ success: true, data: {} });
+      }
+
+      const { query: dbQuery } = await import('../db/connection.js');
+      const placeholders = sessionIds.map((_, i) => `$${i + 1}`).join(', ');
+      const result = await dbQuery(
+        `SELECT session_id, ai_status FROM charts WHERE session_id IN (${placeholders})`,
+        sessionIds.map(String)
+      );
+
+      const statusMap = {};
+      for (const row of result.rows) {
+        statusMap[row.session_id] = row.ai_status;
+      }
+
+      res.json({ success: true, data: statusMap });
+    } catch (error) {
+      console.error('Error fetching batch status:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
 }
 
 export const chartController = new ChartController();

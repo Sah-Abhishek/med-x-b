@@ -140,6 +140,9 @@ router.get('/debug/:chartNumber', async (req, res) => {
 // CHART CRUD OPERATIONS
 // ═══════════════════════════════════════════════════════════════
 
+// Get AI status for multiple charts by session IDs
+router.post('/batch-status', chartController.getBatchStatus.bind(chartController));
+
 // Get chart by session ID (must be before /:chartNumber)
 router.get('/session/:sessionId', chartController.getChartBySessionId.bind(chartController));
 
