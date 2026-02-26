@@ -140,6 +140,7 @@ class DocumentWorker {
       log.info('STATUS', `Setting chart ${chartNumber} to 'processing'`);
       await ChartRepository.updateStatus(chartNumber, 'processing');
       await QueueService.notifyStatusChange(job.job_id, 'processing', 'processing', `Processing chart ${chartNumber}`);
+      if (chartInfo?.sessionId) await QueueService.notifyChartStatus(chartInfo.sessionId, 'processing');
 
       // Fetch ALL documents for this chart (includes previously uploaded docs with same session_id)
       const allChartDocs = await DocumentRepository.getByChartId(chartId);
@@ -364,6 +365,7 @@ class DocumentWorker {
       // Mark job as completed
       await QueueService.completeJob(job.job_id);
       await QueueService.notifyStatusChange(job.job_id, 'completed', 'completed', `Chart ${chartNumber} processed successfully`);
+      if (chartInfo?.sessionId) await QueueService.notifyChartStatus(chartInfo.sessionId, 'ready');
 
       log.divider();
       log.success('JOB_COMPLETE', `Chart ${chartNumber} processed successfully`, {
@@ -424,9 +426,12 @@ class DocumentWorker {
       }
 
       // Update chart status
+      const jd = typeof job.job_data === 'string' ? JSON.parse(job.job_data) : job.job_data;
+      const failSessionId = jd?.chartInfo?.sessionId;
       if (failResult.isPermanentlyFailed) {
         log.warn('FAILURE_HANDLING', `Chart ${chartNumber} PERMANENTLY FAILED (max attempts reached)`);
         await ChartRepository.markFailed(chartNumber, errorMessage);
+        if (failSessionId) await QueueService.notifyChartStatus(failSessionId, 'failed');
       } else {
         const retryInSeconds = Math.round((failResult.retryAfter - new Date()) / 1000);
         log.info('FAILURE_HANDLING', `Chart ${chartNumber} set to RETRY_PENDING (retry in ${retryInSeconds}s)`);
@@ -436,6 +441,7 @@ class DocumentWorker {
           true,
           failResult.attempts
         );
+        if (failSessionId) await QueueService.notifyChartStatus(failSessionId, 'retry_pending');
       }
 
     } catch (handlingError) {

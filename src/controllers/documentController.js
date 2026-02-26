@@ -208,6 +208,9 @@ class DocumentController {
 
       const job = await QueueService.addJob(chart.id, chartNumber, jobData);
 
+      // Notify dashboard clients that this chart is now queued
+      if (sessionId) await QueueService.notifyChartStatus(sessionId, 'queued');
+
       log.success('UPLOAD_COMPLETE', `Documents uploaded and queued successfully`, {
         chartNumber,
         chartId: chart.id,

@@ -10,6 +10,7 @@ class WebSocketService {
     this.wss = null;
     this.pgClient = null;
     this.subscriptions = new Map(); // jobId -> Set<WebSocket>
+    this.chartSubscriptions = new Map(); // sessionId -> Set<WebSocket>
     this.pingInterval = null;
   }
 
@@ -26,6 +27,7 @@ class WebSocketService {
 
       ws.isAlive = true;
       ws.subscribedJobs = new Set();
+      ws.subscribedCharts = new Set();
 
       ws.on('pong', () => {
         ws.isAlive = true;
@@ -100,11 +102,34 @@ class WebSocketService {
           jobId: msg.jobId,
           timestamp: new Date().toISOString()
         }));
+
+      } else if (msg.type === 'subscribe_charts' && Array.isArray(msg.sessionIds)) {
+        // Dashboard subscribes to chart-level status updates
+        for (const sid of msg.sessionIds) {
+          const key = String(sid);
+          if (!this.chartSubscriptions.has(key)) {
+            this.chartSubscriptions.set(key, new Set());
+          }
+          this.chartSubscriptions.get(key).add(ws);
+          ws.subscribedCharts.add(key);
+        }
+        ws.send(JSON.stringify({
+          type: 'charts_subscribed',
+          count: msg.sessionIds.length,
+          timestamp: new Date().toISOString()
+        }));
+
+      } else if (msg.type === 'unsubscribe_charts') {
+        this._unsubscribeAllCharts(ws);
+        ws.send(JSON.stringify({
+          type: 'charts_unsubscribed',
+          timestamp: new Date().toISOString()
+        }));
       }
     } catch (err) {
       ws.send(JSON.stringify({
         type: 'error',
-        message: 'Invalid message format. Expected JSON with { type, jobId }.'
+        message: 'Invalid message format.'
       }));
     }
   }
@@ -159,6 +184,22 @@ class WebSocketService {
   }
 
   /**
+   * Remove all chart subscriptions for a client
+   */
+  _unsubscribeAllCharts(ws) {
+    if (ws.subscribedCharts) {
+      for (const sid of ws.subscribedCharts) {
+        const clients = this.chartSubscriptions.get(sid);
+        if (clients) {
+          clients.delete(ws);
+          if (clients.size === 0) this.chartSubscriptions.delete(sid);
+        }
+      }
+      ws.subscribedCharts.clear();
+    }
+  }
+
+  /**
    * Clean up all subscriptions for a disconnected client
    */
   _cleanupClient(ws) {
@@ -167,6 +208,7 @@ class WebSocketService {
         this._unsubscribeJob(ws, jobId);
       }
     }
+    this._unsubscribeAllCharts(ws);
   }
 
   /**
@@ -186,14 +228,17 @@ class WebSocketService {
 
     await this.pgClient.connect();
     await this.pgClient.query('LISTEN job_status_update');
+    await this.pgClient.query('LISTEN chart_status_update');
 
     this.pgClient.on('notification', (msg) => {
       if (msg.channel === 'job_status_update') {
         this._handleNotification(msg.payload);
+      } else if (msg.channel === 'chart_status_update') {
+        this._handleChartNotification(msg.payload);
       }
     });
 
-    console.log('👂 PG LISTEN active on channel: job_status_update');
+    console.log('👂 PG LISTEN active on channels: job_status_update, chart_status_update');
   }
 
   /**
@@ -232,6 +277,29 @@ class WebSocketService {
       }
     } catch (err) {
       console.error('❌ Error handling PG notification:', err.message);
+    }
+  }
+
+  /**
+   * Handle a chart_status_update NOTIFY and push to subscribed dashboard clients
+   */
+  _handleChartNotification(payload) {
+    try {
+      const update = JSON.parse(payload);
+      const { sessionId } = update;
+
+      const clients = this.chartSubscriptions.get(String(sessionId));
+      if (!clients || clients.size === 0) return;
+
+      const message = JSON.stringify({ type: 'chart_status_update', ...update });
+
+      for (const ws of clients) {
+        if (ws.readyState === 1) {
+          ws.send(message);
+        }
+      }
+    } catch (err) {
+      console.error('❌ Error handling chart notification:', err.message);
     }
   }
 

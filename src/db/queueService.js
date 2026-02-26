@@ -361,6 +361,19 @@ export const QueueService = {
   },
 
   /**
+   * Send a PostgreSQL NOTIFY with chart-level AI status update
+   * Used by the worker to broadcast chart status changes to dashboard WebSocket clients
+   */
+  async notifyChartStatus(sessionId, aiStatus) {
+    const payload = JSON.stringify({
+      sessionId: String(sessionId),
+      aiStatus,
+      timestamp: new Date().toISOString()
+    });
+    await query(`SELECT pg_notify('chart_status_update', $1)`, [payload]);
+  },
+
+  /**
    * Get count of jobs waiting for retry
    */
   async getRetryingCount() {
