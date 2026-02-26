@@ -2,6 +2,7 @@ import { s3Service } from '../services/s3Service.js';
 import { cleanupFiles } from '../middleware/upload.js';
 import { ChartRepository, DocumentRepository } from '../db/chartRepository.js';
 import { QueueService } from '../db/queueService.js';
+import { websocketService } from '../services/websocketService.js';
 import { v4 as uuidv4 } from 'uuid';
 
 // ═══════════════════════════════════════════════════════════════
@@ -208,9 +209,9 @@ class DocumentController {
 
       const job = await QueueService.addJob(chart.id, chartNumber, jobData);
 
-      // Notify dashboard clients that this chart is now queued
+      // Notify dashboard clients that this chart is now queued (direct broadcast, no PG NOTIFY)
       try {
-        if (sessionId) await QueueService.notifyChartStatus(sessionId, 'queued');
+        if (sessionId) websocketService.broadcastChartStatus(sessionId, 'queued');
       } catch (notifyErr) {
         log.error('UPLOAD_NOTIFY', 'Failed to send chart status notification (non-fatal)', notifyErr);
       }

@@ -350,6 +350,20 @@ class WebSocketService {
   }
 
   /**
+   * Broadcast chart status directly to subscribed WebSocket clients (no PG NOTIFY).
+   * Use this from code running in the same process (e.g., documentController).
+   */
+  broadcastChartStatus(sessionId, aiStatus) {
+    const update = {
+      sessionId: String(sessionId),
+      aiStatus,
+      timestamp: new Date().toISOString()
+    };
+    console.log(`📊 [WS] broadcastChartStatus direct — sessionId: ${sessionId}, aiStatus: ${aiStatus}`);
+    this._handleChartNotification(JSON.stringify(update));
+  }
+
+  /**
    * Graceful shutdown
    */
   async close() {
