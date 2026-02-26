@@ -12,6 +12,8 @@ class WebSocketService {
     this.subscriptions = new Map(); // jobId -> Set<WebSocket>
     this.chartSubscriptions = new Map(); // sessionId -> Set<WebSocket>
     this.pingInterval = null;
+    this.pgKeepAliveInterval = null;
+    this._reconnecting = false;
   }
 
   /**
@@ -213,18 +215,27 @@ class WebSocketService {
   }
 
   /**
-   * Connect a dedicated PG client and LISTEN on job_status_update channel
+   * Connect a dedicated PG client and LISTEN on job_status_update channel.
+   * Uses TCP keepalive + periodic heartbeat to prevent idle disconnects.
    */
   async _startPGListener() {
+    // Clear any existing keepalive interval
+    if (this.pgKeepAliveInterval) {
+      clearInterval(this.pgKeepAliveInterval);
+      this.pgKeepAliveInterval = null;
+    }
+
     this.pgClient = new Client({
       connectionString: config.database.url,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      // TCP keepalive to prevent firewalls/LBs from killing idle connections
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
     });
 
     this.pgClient.on('error', (err) => {
       console.error('❌ WebSocket PG listener error:', err.message);
-      // Attempt to reconnect after a delay
-      setTimeout(() => this._reconnectPGListener(), 5000);
+      this._reconnectPGListener();
     });
 
     await this.pgClient.connect();
@@ -239,23 +250,49 @@ class WebSocketService {
       }
     });
 
-    console.log('👂 PG LISTEN active on channels: job_status_update, chart_status_update');
+    // Send a lightweight query every 30s to keep the connection alive
+    this.pgKeepAliveInterval = setInterval(async () => {
+      try {
+        await this.pgClient.query('SELECT 1');
+      } catch (err) {
+        console.error('❌ PG keepalive query failed:', err.message);
+        this._reconnectPGListener();
+      }
+    }, 30000);
+
+    console.log('👂 PG LISTEN active on channels: job_status_update, chart_status_update (keepalive enabled)');
   }
 
   /**
-   * Reconnect the PG listener if connection drops
+   * Reconnect the PG listener if connection drops.
+   * Uses a guard to prevent multiple concurrent reconnect attempts.
    */
   async _reconnectPGListener() {
+    if (this._reconnecting) return;
+    this._reconnecting = true;
+
+    // Stop the keepalive heartbeat for the dead connection
+    if (this.pgKeepAliveInterval) {
+      clearInterval(this.pgKeepAliveInterval);
+      this.pgKeepAliveInterval = null;
+    }
+
     try {
       if (this.pgClient) {
         try { await this.pgClient.end(); } catch (e) { /* ignore */ }
+        this.pgClient = null;
       }
       await this._startPGListener();
-      console.log('🔄 PG listener reconnected');
+      console.log('🔄 PG listener reconnected successfully');
     } catch (err) {
       console.error('❌ PG listener reconnect failed:', err.message);
-      setTimeout(() => this._reconnectPGListener(), 10000);
+      setTimeout(() => {
+        this._reconnecting = false;
+        this._reconnectPGListener();
+      }, 5000);
+      return;
     }
+    this._reconnecting = false;
   }
 
   /**
@@ -317,6 +354,9 @@ class WebSocketService {
    */
   async close() {
     clearInterval(this.pingInterval);
+    if (this.pgKeepAliveInterval) {
+      clearInterval(this.pgKeepAliveInterval);
+    }
 
     if (this.wss) {
       this.wss.clients.forEach((ws) => ws.terminate());
