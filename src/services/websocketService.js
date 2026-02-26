@@ -105,6 +105,7 @@ class WebSocketService {
 
       } else if (msg.type === 'subscribe_charts' && Array.isArray(msg.sessionIds)) {
         // Dashboard subscribes to chart-level status updates
+        console.log(`📊 [WS] subscribe_charts — ${msg.sessionIds.length} sessionIds:`, msg.sessionIds.slice(0, 5), msg.sessionIds.length > 5 ? '...' : '');
         for (const sid of msg.sessionIds) {
           const key = String(sid);
           if (!this.chartSubscriptions.has(key)) {
@@ -288,9 +289,17 @@ class WebSocketService {
       const update = JSON.parse(payload);
       const { sessionId } = update;
 
-      const clients = this.chartSubscriptions.get(String(sessionId));
-      if (!clients || clients.size === 0) return;
+      console.log(`📊 [WS] chart_status_update received from PG — sessionId: ${sessionId}, aiStatus: ${update.aiStatus}`);
+      console.log(`📊 [WS] chartSubscriptions has key "${String(sessionId)}": ${this.chartSubscriptions.has(String(sessionId))}`);
+      console.log(`📊 [WS] Total chartSubscription keys:`, [...this.chartSubscriptions.keys()].slice(0, 10));
 
+      const clients = this.chartSubscriptions.get(String(sessionId));
+      if (!clients || clients.size === 0) {
+        console.log(`📊 [WS] No subscribed clients for sessionId: ${sessionId}`);
+        return;
+      }
+
+      console.log(`📊 [WS] Forwarding to ${clients.size} client(s)`);
       const message = JSON.stringify({ type: 'chart_status_update', ...update });
 
       for (const ws of clients) {

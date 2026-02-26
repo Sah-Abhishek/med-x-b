@@ -370,7 +370,9 @@ export const QueueService = {
       aiStatus,
       timestamp: new Date().toISOString()
     });
+    console.log(`📊 [notifyChartStatus] Sending PG NOTIFY — sessionId: ${sessionId}, aiStatus: ${aiStatus}`);
     await query(`SELECT pg_notify('chart_status_update', $1)`, [payload]);
+    console.log(`📊 [notifyChartStatus] PG NOTIFY sent successfully`);
   },
 
   /**
