@@ -197,10 +197,16 @@ class ChartController {
 
       // Look up active (non-terminal) processing job for this chart
       let activeJobId = null;
+      let activeJobPhase = null;
+      let activeJobStatus = null;
       if (chart.chart_number) {
         const jobs = await QueueService.getJobsByChart(chart.chart_number);
         const activeJob = jobs.find(j => j.status === 'pending' || j.status === 'processing');
-        if (activeJob) activeJobId = activeJob.job_id;
+        if (activeJob) {
+          activeJobId = activeJob.job_id;
+          activeJobPhase = activeJob.current_phase || activeJob.status;
+          activeJobStatus = activeJob.status;
+        }
       }
 
       const slaInfo = calculateProcessingDuration(chart.created_at, chart.processing_completed_at);
@@ -220,6 +226,8 @@ class ChartController {
           aiStatus: chart.ai_status,
           reviewStatus: chart.review_status,
           activeJobId,
+          activeJobPhase,
+          activeJobStatus,
 
           // AI Results
           aiSummary: chart.ai_summary,
