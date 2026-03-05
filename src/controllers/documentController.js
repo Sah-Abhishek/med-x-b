@@ -119,6 +119,18 @@ class DocumentController {
                 isGroupMember: true
               });
             });
+          } else if (txn.type === 'doc') {
+            fileTransactionMap.set(txn.fileIndex, {
+              transactionId,
+              transactionLabel: txn.label || 'Document',
+              isGroupMember: false
+            });
+          } else if (txn.type === 'text') {
+            fileTransactionMap.set(txn.fileIndex, {
+              transactionId,
+              transactionLabel: txn.label || 'Clinical Text',
+              isGroupMember: false
+            });
           }
         });
       } else {
