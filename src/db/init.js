@@ -36,7 +36,7 @@ async function initDatabase() {
       CREATE TABLE charts (
         id SERIAL PRIMARY KEY,
         session_id VARCHAR(255) UNIQUE NOT NULL,
-        chart_number VARCHAR(100) NOT NULL,
+        chart_number VARCHAR(100),
         mrn VARCHAR(100),
         facility VARCHAR(255),
         specialty VARCHAR(255),

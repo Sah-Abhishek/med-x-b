@@ -60,11 +60,7 @@ class DocumentController {
         return res.status(400).json({ success: false, error: 'Session ID is required' });
       }
 
-      if (!chartNumber) {
-        cleanupFiles(files);
-        log.error('UPLOAD_VALIDATION', 'Chart number is required');
-        return res.status(400).json({ success: false, error: 'Chart number is required' });
-      }
+      // chartNumber is optional - may be null for some integrations
 
       // Log file details
       files.forEach((f, i) => {
@@ -83,11 +79,11 @@ class DocumentController {
         }
       }
 
-      log.info('UPLOAD_DB', `Creating/updating chart record: ${chartNumber}`);
+      log.info('UPLOAD_DB', `Creating/updating chart record: ${chartNumber || 'No chart number'}`);
 
       const chart = await ChartRepository.createQueued({
         sessionId,
-        chartNumber,
+        chartNumber: chartNumber || null,
         mrn: mrn || '',
         facility: facility || '',
         specialty: specialty || '',
