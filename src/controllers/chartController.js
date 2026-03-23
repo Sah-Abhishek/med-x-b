@@ -1093,6 +1093,131 @@ class ChartController {
       res.status(500).json({ success: false, error: error.message });
     }
   }
+  /**
+   * Processing Analytics for Admin
+   * GET /api/charts/analytics/processing
+   */
+  async getProcessingAnalytics(req, res) {
+    try {
+      const { query: dbQuery } = await import('../db/connection.js');
+      const { period = '30' } = req.query;
+      const periodDays = parseInt(period);
+
+      // Overall processing stats
+      const overallStats = await dbQuery(`
+        SELECT
+          COUNT(*) as total_charts,
+          COUNT(*) FILTER (WHERE ai_status = 'ready' OR review_status = 'submitted') as completed,
+          COUNT(*) FILTER (WHERE ai_status = 'processing') as processing,
+          COUNT(*) FILTER (WHERE ai_status = 'queued') as queued,
+          COUNT(*) FILTER (WHERE ai_status = 'failed') as failed,
+          COUNT(*) FILTER (WHERE ai_status = 'retry_pending') as retry_pending
+        FROM charts
+        WHERE created_at >= NOW() - INTERVAL '${periodDays} days'
+      `);
+
+      // Processing time breakdown from sla_data
+      const processingTimes = await dbQuery(`
+        SELECT
+          id,
+          chart_number,
+          session_id,
+          facility,
+          specialty,
+          ai_status,
+          document_count,
+          sla_data,
+          processing_started_at,
+          processing_completed_at,
+          created_at
+        FROM charts
+        WHERE sla_data IS NOT NULL
+        AND created_at >= NOW() - INTERVAL '${periodDays} days'
+        ORDER BY created_at DESC
+      `);
+
+      // Per-chart timing details
+      const chartTimings = [];
+      let totalOcrMs = 0, totalAiMs = 0, totalMs = 0, count = 0;
+      const slaDistribution = { excellent: 0, good: 0, acceptable: 0, delayed: 0 };
+
+      processingTimes.rows.forEach(row => {
+        const sla = row.sla_data;
+        if (!sla?.durations_ms) return;
+
+        count++;
+        totalOcrMs += sla.durations_ms.ocr || 0;
+        totalAiMs += sla.durations_ms.ai || 0;
+        totalMs += sla.durations_ms.total || 0;
+
+        const status = sla.slaStatus?.status || 'delayed';
+        if (slaDistribution[status] !== undefined) slaDistribution[status]++;
+
+        chartTimings.push({
+          id: row.id,
+          chartNumber: row.chart_number,
+          sessionId: row.session_id,
+          facility: row.facility,
+          specialty: row.specialty,
+          documentCount: row.document_count,
+          ocrMs: sla.durations_ms.ocr,
+          aiMs: sla.durations_ms.ai,
+          totalMs: sla.durations_ms.total,
+          overheadMs: sla.durations_ms.overhead,
+          slaStatus: sla.slaStatus?.status,
+          createdAt: row.created_at
+        });
+      });
+
+      // Queue stats
+      const queueStats = await dbQuery(`
+        SELECT
+          COUNT(*) as total_jobs,
+          COUNT(*) FILTER (WHERE status = 'pending') as pending,
+          COUNT(*) FILTER (WHERE status = 'processing') as processing,
+          COUNT(*) FILTER (WHERE status = 'completed') as completed,
+          COUNT(*) FILTER (WHERE status = 'permanently_failed') as failed,
+          AVG(attempts) FILTER (WHERE status = 'completed') as avg_attempts
+        FROM processing_queue
+        WHERE created_at >= NOW() - INTERVAL '${periodDays} days'
+      `);
+
+      // Daily volume
+      const dailyVolume = await dbQuery(`
+        SELECT
+          DATE(created_at) as date,
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE ai_status = 'ready' OR review_status = 'submitted') as completed,
+          COUNT(*) FILTER (WHERE ai_status = 'failed') as failed
+        FROM charts
+        WHERE created_at >= NOW() - INTERVAL '${periodDays} days'
+        GROUP BY DATE(created_at)
+        ORDER BY date DESC
+        LIMIT 30
+      `);
+
+      res.json({
+        success: true,
+        data: {
+          overview: overallStats.rows[0],
+          averages: count > 0 ? {
+            avgOcrMs: Math.round(totalOcrMs / count),
+            avgAiMs: Math.round(totalAiMs / count),
+            avgTotalMs: Math.round(totalMs / count),
+            chartsAnalyzed: count
+          } : null,
+          slaDistribution,
+          chartTimings,
+          queueStats: queueStats.rows[0],
+          dailyVolume: dailyVolume.rows
+        }
+      });
+
+    } catch (error) {
+      console.error('Error fetching processing analytics:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
 }
 
 export const chartController = new ChartController();

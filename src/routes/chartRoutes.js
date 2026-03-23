@@ -14,6 +14,7 @@ router.get('/stats/sla', chartController.getSLAStats.bind(chartController));
 // Analytics endpoints
 router.get('/analytics/modifications', chartController.getModificationAnalytics.bind(chartController));
 router.get('/analytics/dashboard', chartController.getDashboardAnalytics.bind(chartController));
+router.get('/analytics/processing', chartController.getProcessingAnalytics.bind(chartController));
 
 // Filter options
 router.get('/filters/facilities', chartController.getFacilities.bind(chartController));
