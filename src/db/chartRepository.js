@@ -134,6 +134,52 @@ export const ChartRepository = {
     return result.rows[0];
   },
 
+  async updateWithAIResultsById(chartId, aiResults, slaData) {
+    const originalAICodes = {
+      ed_em_level: aiResults.diagnosis_codes?.ed_em_level || [],
+      procedures: aiResults.procedures || [],
+      primary_diagnosis: aiResults.diagnosis_codes?.primary_diagnosis || [],
+      secondary_diagnoses: aiResults.diagnosis_codes?.secondary_diagnoses || [],
+      modifiers: aiResults.diagnosis_codes?.modifiers || [],
+      generated_at: new Date().toISOString()
+    };
+
+    const result = await query(
+      `UPDATE charts SET
+        ai_status = 'ready',
+        ai_summary = $2,
+        diagnosis_codes = $3,
+        procedures = $4,
+        medications = $5,
+        vitals_summary = $6,
+        lab_results_summary = $7,
+        coding_notes = $8,
+        sla_data = $9,
+        original_ai_codes = $10,
+        processing_completed_at = CURRENT_TIMESTAMP,
+        last_error = NULL,
+        last_error_at = NULL,
+        retry_count = 0,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *`,
+      [
+        chartId,
+        JSON.stringify(aiResults.ai_narrative_summary || {}),
+        JSON.stringify(aiResults.diagnosis_codes || {}),
+        JSON.stringify(aiResults.procedures || []),
+        JSON.stringify(aiResults.medications || []),
+        JSON.stringify(aiResults.vitals_summary || {}),
+        JSON.stringify(aiResults.lab_results_summary || []),
+        JSON.stringify(aiResults.coding_notes || {}),
+        JSON.stringify(slaData || {}),
+        JSON.stringify(originalAICodes)
+      ]
+    );
+
+    return result.rows[0];
+  },
+
   /**
    * NEW: Update chart with error information when processing fails
    * Sets appropriate status based on whether it will retry
@@ -156,6 +202,24 @@ export const ChartRepository = {
     return result.rows[0];
   },
 
+  async updateWithErrorById(chartId, errorMessage, willRetry, attemptCount) {
+    const aiStatus = willRetry ? 'retry_pending' : 'failed';
+
+    const result = await query(
+      `UPDATE charts SET
+        ai_status = $2,
+        last_error = $3,
+        last_error_at = CURRENT_TIMESTAMP,
+        retry_count = $4,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *`,
+      [chartId, aiStatus, errorMessage, attemptCount]
+    );
+
+    return result.rows[0];
+  },
+
   /**
    * NEW: Mark chart as permanently failed
    */
@@ -169,6 +233,21 @@ export const ChartRepository = {
       WHERE chart_number = $1
       RETURNING *`,
       [chartNumber, errorMessage]
+    );
+
+    return result.rows[0];
+  },
+
+  async markFailedById(chartId, errorMessage) {
+    const result = await query(
+      `UPDATE charts SET
+        ai_status = 'failed',
+        last_error = $2,
+        last_error_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *`,
+      [chartId, errorMessage]
     );
 
     return result.rows[0];

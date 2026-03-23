@@ -137,8 +137,8 @@ class DocumentWorker {
       const { chartId, chartInfo, documents: jobDocuments } = jobData;
 
       // Update chart status to processing
-      log.info('STATUS', `Setting chart ${chartNumber} to 'processing'`);
-      await ChartRepository.updateStatus(chartNumber, 'processing');
+      log.info('STATUS', `Setting chart ${chartId} to 'processing'`);
+      await ChartRepository.updateStatusById(chartId, 'processing');
       await QueueService.notifyStatusChange(job.job_id, 'processing', 'processing', `Processing chart ${chartNumber}`);
       if (chartInfo?.sessionId) await QueueService.notifyChartStatus(chartInfo.sessionId, 'processing');
 
@@ -355,7 +355,7 @@ class DocumentWorker {
       const slaSummary = sla.getSummary();
 
       try {
-        await ChartRepository.updateWithAIResults(chartNumber, aiResult.data, slaSummary);
+        await ChartRepository.updateWithAIResultsById(chartId, aiResult.data, slaSummary);
         log.success('SAVE_COMPLETE', `Chart ${chartNumber} updated with AI results`);
       } catch (saveError) {
         log.error('SAVE_FAILED', `Failed to save AI results`, saveError);
@@ -414,29 +414,26 @@ class DocumentWorker {
           : `Permanently failed: ${errorMessage}`
       );
 
-      // Get chartNumber from job if not provided
-      if (!chartNumber || chartNumber === 'unknown') {
-        try {
-          const jobData = typeof job.job_data === 'string' ? JSON.parse(job.job_data) : job.job_data;
-          chartNumber = jobData.chartNumber;
-        } catch (e) {
-          log.error('FAILURE_HANDLING', `Could not extract chartNumber from job`);
-          return;
-        }
+      // Get chartId from job data
+      const jd = typeof job.job_data === 'string' ? JSON.parse(job.job_data) : job.job_data;
+      const chartId = jd?.chartId;
+      const failSessionId = jd?.chartInfo?.sessionId;
+
+      if (!chartId) {
+        log.error('FAILURE_HANDLING', `Could not extract chartId from job`);
+        return;
       }
 
       // Update chart status
-      const jd = typeof job.job_data === 'string' ? JSON.parse(job.job_data) : job.job_data;
-      const failSessionId = jd?.chartInfo?.sessionId;
       if (failResult.isPermanentlyFailed) {
-        log.warn('FAILURE_HANDLING', `Chart ${chartNumber} PERMANENTLY FAILED (max attempts reached)`);
-        await ChartRepository.markFailed(chartNumber, errorMessage);
+        log.warn('FAILURE_HANDLING', `Chart ${chartId} PERMANENTLY FAILED (max attempts reached)`);
+        await ChartRepository.markFailedById(chartId, errorMessage);
         if (failSessionId) await QueueService.notifyChartStatus(failSessionId, 'failed');
       } else {
         const retryInSeconds = Math.round((failResult.retryAfter - new Date()) / 1000);
-        log.info('FAILURE_HANDLING', `Chart ${chartNumber} set to RETRY_PENDING (retry in ${retryInSeconds}s)`);
-        await ChartRepository.updateWithError(
-          chartNumber,
+        log.info('FAILURE_HANDLING', `Chart ${chartId} set to RETRY_PENDING (retry in ${retryInSeconds}s)`);
+        await ChartRepository.updateWithErrorById(
+          chartId,
           errorMessage,
           true,
           failResult.attempts
