@@ -26,7 +26,8 @@ class S3Service {
     const timestamp = Date.now();
     const ext = path.extname(originalFilename);
     const basename = path.basename(originalFilename, ext).replace(/[^a-zA-Z0-9]/g, '_');
-    return `clinical_documents/${chartNumber}/${timestamp}_${basename}${ext}`;
+    const folder = chartNumber || 'unassigned';
+    return `clinical_documents/${folder}/${timestamp}_${basename}${ext}`;
   }
 
   /**
@@ -47,8 +48,8 @@ class S3Service {
         ACL: 'public-read',
         Metadata: {
           'original-filename': file.originalname,
-          'chart-number': chartNumber,
-          'document-type': documentType
+          'chart-number': chartNumber || '',
+          'document-type': documentType || ''
         }
       });
 

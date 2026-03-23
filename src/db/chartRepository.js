@@ -232,6 +232,25 @@ export const ChartRepository = {
     return result.rows[0];
   },
 
+  async updateStatusById(chartId, aiStatus, reviewStatus = null) {
+    let queryText = `UPDATE charts SET ai_status = $2`;
+    const params = [chartId, aiStatus];
+
+    if (aiStatus === 'processing') {
+      queryText += `, processing_started_at = CURRENT_TIMESTAMP`;
+    }
+
+    if (reviewStatus) {
+      queryText += `, review_status = $${params.length + 1}`;
+      params.push(reviewStatus);
+    }
+
+    queryText += `, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`;
+
+    const result = await query(queryText, params);
+    return result.rows[0];
+  },
+
   /**
    * Update review status only
    */

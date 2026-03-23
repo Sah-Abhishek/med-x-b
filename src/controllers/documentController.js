@@ -198,7 +198,7 @@ class DocumentController {
 
       if (documentRecords.length === 0) {
         log.error('UPLOAD_COMPLETE', 'All file uploads failed');
-        await ChartRepository.updateStatus(chartNumber, 'failed');
+        await ChartRepository.updateStatusById(chart.id, 'failed');
         return res.status(500).json({
           success: false,
           error: 'All file uploads failed'
